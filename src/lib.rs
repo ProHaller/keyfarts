@@ -1,143 +1,153 @@
-use rdev::{Event, EventType, Key, listen};
-use rodio::Decoder;
-use std::fs::File;
+use anyhow::Result;
+use rdev::{
+    Event, EventType,
+    Key::{self},
+    listen,
+};
+use rodio::{Decoder, MixerDeviceSink, Source, buffer::SamplesBuffer};
+use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
-mod sounds;
+pub const FART_1: &[u8] = include_bytes!("../assets/fart_1.mp3");
+pub const FART_2: &[u8] = include_bytes!("../assets/fart_2.mp3");
+pub const FART_3: &[u8] = include_bytes!("../assets/fart_3.mp3");
+pub const FART_4: &[u8] = include_bytes!("../assets/fart_4.mp3");
+pub const FART_5: &[u8] = include_bytes!("../assets/fart_5.mp3");
+pub const FART_6: &[u8] = include_bytes!("../assets/fart_6.mp3");
+pub const FART_7: &[u8] = include_bytes!("../assets/fart_7.mp3");
+pub const FART_8: &[u8] = include_bytes!("../assets/fart_8.mp3");
+pub const FART_9: &[u8] = include_bytes!("../assets/fart_9.mp3");
+pub const FART_10: &[u8] = include_bytes!("../assets/fart_10.mp3");
+pub const FART_11: &[u8] = include_bytes!("../assets/fart_11.mp3");
+pub const FART_12: &[u8] = include_bytes!("../assets/fart_12.mp3");
 
-pub fn play(file_path: &'static str) {
-    tokio::spawn(async move {
-        // Get an OS-Sink handle to the default physical sound device.
-        // Note that the playback stops when the handle is dropped.//!
-        let mut handle =
-            rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
-        handle.log_on_drop(false);
-        let _player = rodio::Player::connect_new(handle.mixer());
-        // Load a sound from a file, using a path relative to Cargo.toml
-        let file = File::open(file_path).unwrap();
-        // Decode that sound file into a source
-        let source = Decoder::try_from(file).unwrap();
-        // Play the sound directly on the device
-        handle.mixer().add(source);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    });
+pub struct AudioPlayer {
+    samples: [SamplesBuffer; Sound::COUNT],
+    sink: MixerDeviceSink,
 }
 
-pub async fn keyboard_input() {
-    // This will block.
-    if let Err(error) = listen(fart_callback) {
-        println!("Error: {:?}", error)
+impl AudioPlayer {
+    pub fn new() -> Result<Self> {
+        let samples = load_samples()?;
+        let mut handle = rodio::DeviceSinkBuilder::open_default_sink()?;
+        handle.log_on_drop(false);
+        Ok(Self {
+            samples,
+            sink: handle,
+        })
     }
 
-    fn fart_callback(event: Event) {
+    pub fn play(&self, sound: Sound) {
+        self.sink.mixer().add(self.samples[sound as usize].clone());
+    }
+}
+
+fn load_samples() -> Result<[SamplesBuffer; Sound::COUNT]> {
+    let samples: Vec<SamplesBuffer> = Sound::iter()
+        .map(|sound| Ok(Decoder::try_from(std::io::Cursor::new(sound.bytes()))?.record()))
+        .collect::<Result<_>>()?;
+
+    // Convert Vec to array (safe since we know the length)
+    Ok(samples
+        .try_into()
+        .expect("Convert into array of size COUNT"))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount)]
+pub enum Sound {
+    Letter,         // fart_1
+    Digit,          // fart_2
+    Edition,        // fart_3
+    Arrow,          // fart_4
+    Navigation,     // fart_5
+    NumPad,         // fart_6
+    NumPadModifyer, // fart_7
+    Punctuation,    // fart_8
+    Modifier,       // fart_9
+    Enter,          // fart_10
+    FnKey,          // fart_11
+    Unknown,        // fart_12
+}
+
+impl Sound {
+    const fn bytes(self) -> &'static [u8] {
+        match self {
+            Sound::Letter => FART_1,
+            Sound::Digit => FART_2,
+            Sound::Edition => FART_3,
+            Sound::Arrow => FART_4,
+            Sound::Navigation => FART_5,
+            Sound::NumPad => FART_6,
+            Sound::NumPadModifyer => FART_7,
+            Sound::Punctuation => FART_8,
+            Sound::Modifier => FART_9,
+            Sound::Enter => FART_10,
+            Sound::FnKey => FART_11,
+            Sound::Unknown => FART_12,
+        }
+    }
+}
+
+pub fn key_sound(key: Key) -> Sound {
+    use Key::*;
+    use Sound::*;
+
+    match key {
+        KeyA | KeyB | KeyC | KeyD | KeyE | KeyF | KeyG | KeyH | KeyI | KeyJ | KeyK | KeyL
+        | KeyM | KeyN | KeyO | KeyP | KeyQ | KeyR | KeyS | KeyT | KeyU | KeyV | KeyW | KeyX
+        | KeyY | KeyZ => Letter,
+
+        Num1 | Num2 | Num3 | Num4 | Num5 | Num6 | Num7 | Num8 | Num9 | Num0 => Digit,
+
+        Backspace | CapsLock | Delete | Return | Space | Tab => Edition,
+
+        Alt
+        | AltGr
+        | ControlLeft
+        | ControlRight
+        | MetaLeft
+        | MetaRight
+        | ShiftLeft
+        | Key::Unknown(_)
+        | ShiftRight
+        | Function
+        | F1
+        | F10
+        | F11
+        | F12
+        | F2
+        | F3
+        | F4
+        | F5
+        | F6
+        | F7
+        | F8
+        | F9
+        | PrintScreen
+        | ScrollLock
+        | Pause
+        | NumLock => Modifier,
+
+        End | Escape | Home | PageDown | PageUp | Insert => Navigation,
+
+        DownArrow | LeftArrow | RightArrow | UpArrow => Arrow,
+
+        BackQuote | Minus | Equal | LeftBracket | RightBracket | SemiColon | Quote | BackSlash
+        | IntlBackslash | Comma | Dot | Slash => Punctuation,
+
+        KpDelete | KpReturn | KpMinus | KpPlus | KpMultiply | KpDivide => NumPadModifyer,
+
+        Kp0 | Kp1 | Kp2 | Kp3 | Kp4 | Kp5 | Kp6 | Kp7 | Kp8 | Kp9 => NumPad,
+    }
+}
+
+pub fn keyboard_input(audio_player: AudioPlayer) {
+    let callback = move |event: Event| {
         if let EventType::KeyPress(key) = event.event_type {
-            match key {
-                Key::Alt => play(sounds::FART_9),
-                Key::AltGr => play(sounds::FART_9),
-                Key::Backspace => play(sounds::FART_9),
-                Key::CapsLock => play(sounds::FART_9),
-                Key::ControlLeft => play(sounds::FART_9),
-                Key::ControlRight => play(sounds::FART_9),
-                Key::MetaLeft => play(sounds::FART_9),
-                Key::MetaRight => play(sounds::FART_9),
-                Key::Delete => play(sounds::FART_5),
-                Key::End => play(sounds::FART_5),
-                Key::Escape => play(sounds::FART_5),
-                Key::Home => play(sounds::FART_5),
-                Key::DownArrow => play(sounds::FART_4),
-                Key::LeftArrow => play(sounds::FART_4),
-                Key::RightArrow => play(sounds::FART_4),
-                Key::UpArrow => play(sounds::FART_4),
-                Key::PageDown => play(sounds::FART_5),
-                Key::PageUp => play(sounds::FART_5),
-                Key::Return => play(sounds::FART_10),
-                Key::ShiftLeft => play(sounds::FART_9),
-                Key::ShiftRight => play(sounds::FART_9),
-                Key::Space => play(sounds::FART_4),
-                Key::Tab => play(sounds::FART_4),
-                Key::PrintScreen => play(sounds::FART_5),
-                Key::ScrollLock => play(sounds::FART_5),
-                Key::Pause => play(sounds::FART_5),
-                Key::NumLock => play(sounds::FART_5),
-                Key::BackQuote => play(sounds::FART_5),
-                Key::F1 => play(sounds::FART_11),
-                Key::F10 => play(sounds::FART_11),
-                Key::F11 => play(sounds::FART_11),
-                Key::F12 => play(sounds::FART_11),
-                Key::F2 => play(sounds::FART_11),
-                Key::F3 => play(sounds::FART_11),
-                Key::F4 => play(sounds::FART_11),
-                Key::F5 => play(sounds::FART_11),
-                Key::F6 => play(sounds::FART_11),
-                Key::F7 => play(sounds::FART_11),
-                Key::F8 => play(sounds::FART_11),
-                Key::F9 => play(sounds::FART_11),
-                Key::Num1 => play(sounds::FART_2),
-                Key::Num2 => play(sounds::FART_2),
-                Key::Num3 => play(sounds::FART_2),
-                Key::Num4 => play(sounds::FART_2),
-                Key::Num5 => play(sounds::FART_2),
-                Key::Num6 => play(sounds::FART_2),
-                Key::Num7 => play(sounds::FART_2),
-                Key::Num8 => play(sounds::FART_2),
-                Key::Num9 => play(sounds::FART_2),
-                Key::Num0 => play(sounds::FART_2),
-                Key::Minus => play(sounds::FART_3),
-                Key::Equal => play(sounds::FART_3),
-                Key::KpDelete => play(sounds::FART_3),
-                Key::Function => play(sounds::FART_3),
-                Key::Unknown(_) => play(sounds::FART_12),
-                Key::KeyQ => play(sounds::FART_1),
-                Key::KeyW => play(sounds::FART_1),
-                Key::KeyE => play(sounds::FART_1),
-                Key::KeyR => play(sounds::FART_1),
-                Key::KeyT => play(sounds::FART_1),
-                Key::KeyY => play(sounds::FART_1),
-                Key::KeyU => play(sounds::FART_1),
-                Key::KeyI => play(sounds::FART_1),
-                Key::KeyO => play(sounds::FART_1),
-                Key::KeyP => play(sounds::FART_1),
-                Key::LeftBracket => play(sounds::FART_1),
-                Key::RightBracket => play(sounds::FART_1),
-                Key::KeyA => play(sounds::FART_1),
-                Key::KeyS => play(sounds::FART_1),
-                Key::KeyD => play(sounds::FART_1),
-                Key::KeyF => play(sounds::FART_1),
-                Key::KeyG => play(sounds::FART_1),
-                Key::KeyH => play(sounds::FART_1),
-                Key::KeyJ => play(sounds::FART_1),
-                Key::KeyK => play(sounds::FART_1),
-                Key::KeyL => play(sounds::FART_1),
-                Key::SemiColon => play(sounds::FART_1),
-                Key::Quote => play(sounds::FART_1),
-                Key::BackSlash => play(sounds::FART_1),
-                Key::IntlBackslash => play(sounds::FART_1),
-                Key::KeyZ => play(sounds::FART_1),
-                Key::KeyX => play(sounds::FART_1),
-                Key::KeyC => play(sounds::FART_1),
-                Key::KeyV => play(sounds::FART_1),
-                Key::KeyB => play(sounds::FART_1),
-                Key::KeyN => play(sounds::FART_1),
-                Key::KeyM => play(sounds::FART_1),
-                Key::Comma => play(sounds::FART_1),
-                Key::Dot => play(sounds::FART_1),
-                Key::Slash => play(sounds::FART_1),
-                Key::Insert => play(sounds::FART_1),
-                Key::KpReturn => play(sounds::FART_1),
-                Key::KpMinus => play(sounds::FART_1),
-                Key::KpPlus => play(sounds::FART_1),
-                Key::KpMultiply => play(sounds::FART_1),
-                Key::KpDivide => play(sounds::FART_1),
-                Key::Kp0 => play(sounds::FART_1),
-                Key::Kp1 => play(sounds::FART_1),
-                Key::Kp2 => play(sounds::FART_1),
-                Key::Kp3 => play(sounds::FART_1),
-                Key::Kp4 => play(sounds::FART_1),
-                Key::Kp5 => play(sounds::FART_1),
-                Key::Kp6 => play(sounds::FART_1),
-                Key::Kp7 => play(sounds::FART_1),
-                Key::Kp8 => play(sounds::FART_1),
-                Key::Kp9 => play(sounds::FART_1),
-            }
-        };
+            audio_player.play(key_sound(key));
+        }
+    };
+
+    if let Err(err) = listen(callback) {
+        eprintln!("Error: {err:?}");
     }
 }

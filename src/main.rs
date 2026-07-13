@@ -1,8 +1,7 @@
-use keyfarts::keyboard_input;
+use anyhow::Result;
+use keyfarts::{AudioPlayer, keyboard_input};
 
-mod sounds;
-
-#[tokio::main]
-async fn main() {
-    keyboard_input().await;
+fn main() -> Result<()> {
+    keyboard_input(AudioPlayer::new()?);
+    Ok(())
 }
