@@ -52,6 +52,16 @@ fn load_samples() -> Result<[SamplesBuffer; Sound::COUNT]> {
         .expect("Convert into array of size COUNT"))
 }
 
+pub fn keyboard_input(audio_player: AudioPlayer) -> Result<()> {
+    let callback = move |event: Event| {
+        if let EventType::KeyPress(key) = event.event_type {
+            audio_player.play(key_sound(key));
+        }
+    };
+
+    listen(callback).map_err(|e| anyhow::anyhow!("keyboard listener failed: {e:?}"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCount)]
 pub enum Sound {
     Letter,         // fart_1
@@ -140,14 +150,17 @@ pub fn key_sound(key: Key) -> Sound {
     }
 }
 
-pub fn keyboard_input(audio_player: AudioPlayer) {
-    let callback = move |event: Event| {
-        if let EventType::KeyPress(key) = event.event_type {
-            audio_player.play(key_sound(key));
-        }
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    if let Err(err) = listen(callback) {
-        eprintln!("Error: {err:?}");
+    #[test]
+    fn every_sounds_decodes() {
+        for sound in Sound::iter() {
+            assert!(
+                Decoder::try_from(std::io::Cursor::new(sound.bytes())).is_ok(),
+                "{sound:?} failed to decode"
+            );
+        }
     }
 }
